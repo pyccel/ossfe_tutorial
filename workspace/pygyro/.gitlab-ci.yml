@@ -1,0 +1,35 @@
+stages:
+  - test
+
+testimony:
+  stage: test
+  tags:
+    - vm_linux
+  before_script:
+    - module load impi
+    - export I_MPI_SHM_LMT=shm
+    - source ~/python_virtualenv/bin/activate
+    - pip show numpy
+    - mkdir __test__
+  script:
+    - coverage run -p --source=pygyro -m pytest pygyro -m serial -k 'not long' --short
+    - make
+    - coverage run -p --source=pygyro -m pytest pygyro -m serial
+    - mpirun -n 1 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+    - mpirun -n 4 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+    - mpirun -n 6 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+    - mpirun -n 20 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+    - coverage combine
+    - coverage report -m > cov_out.txt 2> cov_err.txt
+    - python checkCoverage.py 90
+    - make clean
+    - make ACC=numba
+    - pytest pygyro
+    - make clean
+    - make ACC=pythran
+    - pytest pygyro
+  after_script:
+    - rm -r __test__
+    - make clean
+    - deactivate
+    - module unload impi

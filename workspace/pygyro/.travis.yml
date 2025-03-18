@@ -1,0 +1,61 @@
+sudo: required
+os: linux
+dist: xenial
+language: python
+
+# which python versions to test
+# Enable 3.7 without globally enabling 'dist: xenial' for other build jobs
+matrix:
+  include:
+    - python: 3.6
+    - python: 3.7
+    - python: 3.8
+
+# Cache directory $HOME/.cache/pip
+cache: pip
+
+# command before installation: install all dependencies
+before_install:
+  - sudo apt-get install gfortran
+  - sudo apt-get install openmpi-bin libopenmpi-dev
+  - sudo apt-get install libhdf5-openmpi-dev
+  - ompi_info
+  - h5pcc -showconfig -echo || true
+  - export CC="mpicc" HDF5_MPI="ON" HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi
+  - python -m pip install --upgrade pip
+  - python -m pip install Cython
+  - python -m pip uninstall -y pygyro
+  - python -m pip install -r requirements.txt
+  - python -m pip install numba
+  - python -m pip install pythran
+
+# command to install project
+install:
+  - python -m pip install .
+  - python -m pip install coverage
+
+before_script:
+  - mkdir __test__
+
+# command to run tests
+script:
+  - coverage run -p --source=pygyro -m pytest pygyro -m "serial and not long" --short
+  - make
+  - coverage run -p --source=pygyro -m pytest pygyro -m serial
+  - mpirun -n 1 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+  - mpirun -n 4 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+  - mpirun -n 6 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+#  - mpirun -n 20 coverage run -p mpi_tester.py pygyro -m parallel --mpisub
+  - coverage combine
+  - coverage xml
+  - make clean
+  - make ACC=numba
+  - pytest pygyro
+  - make clean
+  - make ACC=pythran
+  - pytest pygyro
+
+after_script:
+  - bash <(wget -q -O - https://coverage.codacy.com/get.sh)
+  - rm -r __test__
+  - make clean
